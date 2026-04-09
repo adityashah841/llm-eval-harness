@@ -1,0 +1,27 @@
+- id: sm_001
+  prompt: "Summarize in one sentence: Retrieval-Augmented Generation (RAG) combines a retrieval system that fetches relevant documents from a knowledge base with a generative language model that uses those documents as context to produce accurate, grounded responses."
+  expected: "RAG enhances language model responses by retrieving relevant documents and using them as context during generation."
+  domain: summarization
+  tags: [nlp, rag]
+  difficulty: easy
+
+- id: sm_002
+  prompt: "Summarize in one sentence: Transformer models process input sequences using self-attention mechanisms that compute pairwise relationships between all tokens simultaneously, enabling parallelization during training and capturing long-range dependencies more effectively than recurrent architectures."
+  expected: "Transformers use self-attention to process all tokens simultaneously, capturing long-range dependencies more efficiently than RNNs."
+  domain: summarization
+  tags: [nlp, transformers]
+  difficulty: medium
+
+- id: sm_003
+  prompt: "Summarize in one sentence: Gradient descent is an iterative optimization algorithm that adjusts model parameters in the direction opposite to the gradient of the loss function, gradually reducing prediction error over many training steps."
+  expected: "Gradient descent minimizes model loss by iteratively updating parameters in the direction opposite to the loss gradient."
+  domain: summarization
+  tags: [ml, optimization]
+  difficulty: easy
+
+- id: sm_004
+  prompt: "Summarize in one sentence: In reinforcement learning from human feedback (RLHF), a reward model trained on human preference data is used to fine-tune a language model using proximal policy optimization, aligning the model's outputs more closely with human values and preferences."
+  expected: "RLHF fine-tunes language models using human preference signals via a reward model and PPO to better align outputs with human values."
+  domain: summarization
+  tags: [rlhf, alignment]
+  difficulty: hard

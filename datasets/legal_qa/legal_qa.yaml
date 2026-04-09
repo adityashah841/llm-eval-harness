@@ -1,0 +1,34 @@
+- id: lq_001
+  prompt: "What does 'force majeure' mean in a contract?"
+  expected: "Force majeure is a contract clause that frees both parties from liability or obligation when an extraordinary event beyond their control prevents fulfillment of contractual obligations."
+  domain: legal
+  tags: [contracts, terminology]
+  difficulty: easy
+
+- id: lq_002
+  prompt: "What is the difference between a warranty and an indemnity in contract law?"
+  expected: "A warranty is a contractual promise that certain facts are true, breach of which gives rise to damages. An indemnity is a promise to compensate for specific losses, often covering third-party claims, and does not require proof of breach."
+  domain: legal
+  tags: [contracts, warranties]
+  difficulty: medium
+
+- id: lq_003
+  prompt: "What is the parol evidence rule?"
+  expected: "The parol evidence rule prevents parties from introducing prior oral or written agreements to contradict, vary, or add to the terms of a final written contract."
+  domain: legal
+  tags: [evidence, contracts]
+  difficulty: hard
+
+- id: lq_004
+  prompt: "Define 'consideration' in contract law."
+  expected: "Consideration is something of value exchanged between parties to a contract, forming the basis of a legally binding agreement. It can be a promise, act, or forbearance."
+  domain: legal
+  tags: [contracts, fundamentals]
+  difficulty: easy
+
+- id: lq_005
+  prompt: "What is promissory estoppel?"
+  expected: "Promissory estoppel is a legal doctrine that enforces a promise even without formal consideration, when one party reasonably relied on the promise to their detriment."
+  domain: legal
+  tags: [equity, contracts]
+  difficulty: hard

@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - ./datasets:/app/datasets
+      - ./mlruns:/app/mlruns
+      - ./outputs:/app/outputs
+
+  mlflow:
+    image: python:3.11-slim
+    command: >
+      bash -c "pip install mlflow && mlflow ui
+      --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns

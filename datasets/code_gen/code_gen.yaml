@@ -1,0 +1,27 @@
+- id: cg_001
+  prompt: "Write a Python function that checks if a string is a palindrome."
+  expected: "def is_palindrome(s): s = s.lower().replace(' ', ''); return s == s[::-1]"
+  domain: code_gen
+  tags: [python, strings]
+  difficulty: easy
+
+- id: cg_002
+  prompt: "Write a Python function to flatten a nested list of arbitrary depth."
+  expected: "def flatten(lst): result = []; [result.extend(flatten(i)) if isinstance(i, list) else result.append(i) for i in lst]; return result"
+  domain: code_gen
+  tags: [python, recursion]
+  difficulty: medium
+
+- id: cg_003
+  prompt: "Write a Python decorator that retries a function up to 3 times on exception."
+  expected: "import functools\ndef retry(func):\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        for i in range(3):\n            try: return func(*args, **kwargs)\n            except Exception:\n                if i == 2: raise\n    return wrapper"
+  domain: code_gen
+  tags: [python, decorators]
+  difficulty: hard
+
+- id: cg_004
+  prompt: "Write a Python context manager that times a block of code."
+  expected: "import time\nfrom contextlib import contextmanager\n@contextmanager\ndef timer():\n    start = time.perf_counter()\n    yield\n    print(f'Elapsed: {time.perf_counter() - start:.3f}s')"
+  domain: code_gen
+  tags: [python, context_managers]
+  difficulty: medium
