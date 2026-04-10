@@ -140,6 +140,10 @@ else:
 
         df = pd.DataFrame([asdict(r) for r in results])
 
+        if df.empty:
+            st.error("No results returned — all model calls may have timed out. Check that Ollama is running and try again.")
+            st.stop()
+
         st.subheader("Aggregate scores by model")
         agg = (
             df.groupby("model_name")
