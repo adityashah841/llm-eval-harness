@@ -170,6 +170,30 @@ npm run build   # tsc -b && vite build
 npm run lint     # oxlint
 ```
 
+## Persistent metrics storage
+
+MLflow's file store is great for one-off experiment comparison, but it isn't
+something `GET /metrics/timeseries` can query efficiently across many runs
+over time. `api/db.py` adds a small SQLite store (`data/metrics.db`, checked
+into the repo) that every API-triggered run is persisted to on completion —
+the run record plus its per-sample scores. `/metrics/timeseries` reads from
+this store, aggregating ROUGE/hallucination/latency per `(run, model)`.
+
+### Scheduled benchmark
+
+`.github/workflows/scheduled-benchmark.yml` runs daily (and on-demand via
+`workflow_dispatch`), reusing `eval.yml`'s setup steps (install Ollama, pull
+`gemma3:4b`), then runs `scripts/scheduled_benchmark.py` — a fixed 2-sample
+legal-QA benchmark — and commits the updated `data/metrics.db` back to `main`
+as `github-actions[bot]`. This is what turns `/metrics/timeseries` into an
+actual time series instead of only reflecting runs someone happened to
+trigger through the API.
+
+```bash
+# Run the same benchmark locally
+uv run python scripts/scheduled_benchmark.py
+```
+
 ## Project structure
 
 ```
@@ -182,7 +206,10 @@ api/
 ├── main.py          # FastAPI app
 ├── routes/          # runs, models, metrics endpoints
 ├── schemas.py        # Pydantic request/response models
-└── store.py          # In-memory run registry
+├── store.py          # In-memory run registry (per-process run status)
+└── db.py             # SQLite persistence — the source for /metrics/timeseries
+data/
+└── metrics.db       # Persisted run + sample results (checked into git)
 frontend/
 └── src/
     ├── api/         # typed fetch client for the FastAPI backend
@@ -193,8 +220,9 @@ datasets/
 ├── code_gen/        # 4 coding tasks
 └── summarization/   # 4 summarization tasks
 scripts/
-├── run_eval.py      # CLI entry point
-└── generate_tests.py  # Local test case generator (uses llama3.1:70b)
+├── run_eval.py             # CLI entry point
+├── generate_tests.py       # Local test case generator (uses llama3.1:70b)
+└── scheduled_benchmark.py  # Fixed benchmark run by the cron workflow, persists to data/metrics.db
 tests/
 └── test_api.py      # FastAPI endpoint tests
 ```

@@ -53,6 +53,7 @@ class ModelInfo(BaseModel):
 class TimeseriesPoint(BaseModel):
     run_id: str
     run_name: Optional[str] = None
+    dataset: Optional[str] = None
     model_name: str
     start_time: Optional[datetime] = None
     rouge1_mean: Optional[float] = None

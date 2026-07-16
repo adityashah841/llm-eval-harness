@@ -38,6 +38,7 @@ export interface ModelInfo {
 export interface TimeseriesPoint {
   run_id: string;
   run_name: string | null;
+  dataset: string | null;
   model_name: string;
   start_time: string | null;
   rouge1_mean: number | null;

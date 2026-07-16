@@ -1,10 +1,17 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import api.db as db
 from api.main import app
 from api.store import run_store
 from llm_eval.adapters.base import ModelResponse
 from llm_eval.adapters.ollama_adapter import OllamaAdapter
+
+
+@pytest.fixture(autouse=True)
+def isolated_db(tmp_path, monkeypatch):
+    """Point every test at a throwaway SQLite file instead of data/metrics.db."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "test_metrics.db")
 
 
 @pytest.fixture(autouse=True)
@@ -104,3 +111,30 @@ def test_timeseries_returns_list(client):
     resp = client.get("/metrics/timeseries")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+def test_completed_run_is_persisted_and_appears_in_timeseries(client):
+    resp = client.post(
+        "/runs",
+        json={
+            "dataset": "legal_qa",
+            "models": ["gemma3:4b"],
+            "smoke_test": True,
+            "use_mlflow": False,
+        },
+    )
+    run_id = resp.json()["id"]
+
+    timeseries = client.get("/metrics/timeseries").json()
+    point = next((p for p in timeseries if p["run_id"] == run_id), None)
+    assert point is not None
+    assert point["model_name"] == "gemma3:4b"
+    assert point["dataset"] == "datasets\\legal_qa" or point["dataset"] == "datasets/legal_qa"
+    assert point["rougeL_mean"] is not None
+    assert point["halluc_rate"] in (0.0, 0.5, 1.0)
+
+    filtered = client.get("/metrics/timeseries", params={"model": "gemma3:4b"}).json()
+    assert any(p["run_id"] == run_id for p in filtered)
+
+    filtered_out = client.get("/metrics/timeseries", params={"model": "phi4"}).json()
+    assert all(p["run_id"] != run_id for p in filtered_out)

@@ -8,6 +8,7 @@ from llm_eval.adapters import OllamaAdapter
 from llm_eval.runner.dataset_loader import load_dataset
 from llm_eval.runner.prompt_runner import PromptRunner
 
+from ..db import save_run
 from ..schemas import RunCreateRequest, RunSummary, SampleResult
 from ..store import RunRecord, RunStatus, run_store
 
@@ -61,6 +62,7 @@ async def _execute_run(
         record.error = str(exc)
     finally:
         record.completed_at = datetime.now(timezone.utc)
+        save_run(record)
 
 
 @router.post("", response_model=RunSummary, status_code=202)
