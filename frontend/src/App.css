@@ -1,0 +1,209 @@
+.app-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 24px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav .brand {
+  font-weight: 700;
+  font-size: 16px;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.app-nav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.app-nav a.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--series-1);
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.field label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.field select,
+.field input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--baseline);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.btn-primary {
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: none;
+  background: var(--series-1);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--baseline);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.data-table th,
+table.data-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gridline);
+  vertical-align: top;
+}
+
+table.data-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pill-good {
+  color: var(--status-good);
+  background: color-mix(in srgb, var(--status-good) 14%, transparent);
+}
+
+.pill-critical {
+  color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 14%, transparent);
+}
+
+.pill-neutral {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.bar-track {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--gridline);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.bar-value {
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.error-banner {
+  color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-critical) 30%, transparent);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}

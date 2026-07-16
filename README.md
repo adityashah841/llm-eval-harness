@@ -135,6 +135,41 @@ The `api/` layer only imports from `llm_eval/` — the adapters, evaluators, and
 runner package are untouched and still work standalone via the CLI and
 Streamlit dashboard.
 
+## Frontend (Vite + React + TypeScript)
+
+A `frontend/` app talks to the API above and is the productionized UI for
+triggering and reviewing runs — the Streamlit dashboard is still there for
+quick one-off local experiments, but this is where the multi-page workflow
+(configure → results → compare → observe) lives.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # point VITE_API_BASE_URL at your API, if not localhost:8000
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). The API must be running
+(`uv run uvicorn api.main:app --port 8000`) for the pages to load data.
+
+### Pages
+
+- **Run configuration** — pick a dataset and one or more models (live from
+  `GET /models`), trigger a run, and watch its status poll to completion.
+- **Results** — per-sample table for a run, filterable by model and by
+  hallucination flag.
+- **Model comparison** — side-by-side aggregate scores (ROUGE, hallucination
+  rate, latency) for every model in a multi-model run.
+- **System health** — placeholder; wired up to real trend data in
+  Checkpoint 4 once persistent metrics storage (Checkpoint 3) exists.
+
+### Build & lint
+
+```bash
+npm run build   # tsc -b && vite build
+npm run lint     # oxlint
+```
+
 ## Project structure
 
 ```
@@ -148,6 +183,11 @@ api/
 ├── routes/          # runs, models, metrics endpoints
 ├── schemas.py        # Pydantic request/response models
 └── store.py          # In-memory run registry
+frontend/
+└── src/
+    ├── api/         # typed fetch client for the FastAPI backend
+    ├── pages/       # Run configuration, Results, Comparison, System health
+    └── context/     # RunsContext — tracks runs triggered this session
 datasets/
 ├── legal_qa/        # 5 hand-written QA pairs (+ generated ones)
 ├── code_gen/        # 4 coding tasks
