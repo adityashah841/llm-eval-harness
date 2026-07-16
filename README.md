@@ -1,8 +1,10 @@
 # LLM Evaluation Harness
 
 A modular, open-source framework for evaluating and comparing local open-source LLMs
-across accuracy, hallucination rate, and latency — with a Streamlit dashboard and
-MLflow experiment tracking.
+across accuracy, hallucination rate, and latency. Started as a Streamlit + MLflow tool
+for fast local experimentation, and is growing into a full-stack platform (REST API,
+React frontend, persistent metrics, observability) on top of the same evaluation
+engine.
 
 **Zero API keys. Zero cost. Runs entirely on your machine via Ollama.**
 
@@ -90,6 +92,49 @@ python scripts/generate_tests.py --domain code_gen --count 10
 docker-compose up
 ```
 
+## API (productionized layer)
+
+A FastAPI service exposes the same evaluation engine used by the CLI and the
+Streamlit dashboard over REST, so other clients (a web frontend, CI jobs,
+scripts) can trigger and read evaluation runs without importing Python.
+The Streamlit dashboard remains the fastest way to run an ad-hoc, interactive
+comparison; the API is for everything that needs to be automated or driven
+from outside a Python REPL.
+
+### Launch the API
+
+```bash
+uv run uvicorn api.main:app --reload --port 8000
+```
+
+Interactive docs at [http://localhost:8000/docs](http://localhost:8000/docs).
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/runs` | Start an eval run (dataset + model list) in the background |
+| `GET` | `/runs/{id}` | Run status (`pending` / `running` / `completed` / `failed`) |
+| `GET` | `/runs/{id}/results` | Per-sample scores (ROUGE, hallucination flag, latency) once complete |
+| `GET` | `/models` | Models available for evaluation, live from Ollama when reachable |
+| `GET` | `/metrics/timeseries` | Aggregated per-model metrics across historical MLflow runs |
+
+```bash
+curl -X POST http://localhost:8000/runs \
+  -H "Content-Type: application/json" \
+  -d '{"dataset": "legal_qa", "models": ["gemma3:4b"], "smoke_test": true}'
+```
+
+### Run the API tests
+
+```bash
+uv run pytest tests/test_api.py
+```
+
+The `api/` layer only imports from `llm_eval/` — the adapters, evaluators, and
+runner package are untouched and still work standalone via the CLI and
+Streamlit dashboard.
+
 ## Project structure
 
 ```
@@ -97,7 +142,12 @@ llm_eval/
 ├── adapters/        # OllamaAdapter + BaseAdapter interface
 ├── evaluators/      # ROUGE scorer, NLI hallucination detector
 ├── runner/          # Async parallel runner, dataset loader, EvalResult
-└── dashboard/       # Streamlit app
+└── dashboard/       # Streamlit app (rapid local prototyping)
+api/
+├── main.py          # FastAPI app
+├── routes/          # runs, models, metrics endpoints
+├── schemas.py        # Pydantic request/response models
+└── store.py          # In-memory run registry
 datasets/
 ├── legal_qa/        # 5 hand-written QA pairs (+ generated ones)
 ├── code_gen/        # 4 coding tasks
@@ -105,6 +155,8 @@ datasets/
 scripts/
 ├── run_eval.py      # CLI entry point
 └── generate_tests.py  # Local test case generator (uses llama3.1:70b)
+tests/
+└── test_api.py      # FastAPI endpoint tests
 ```
 
 ## Architecture
