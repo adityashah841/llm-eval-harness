@@ -207,3 +207,108 @@ table.data-table th {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
+
+.trend-chart {
+  position: relative;
+}
+
+.trend-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.chart-gridline {
+  stroke: var(--gridline);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.chart-axis-label {
+  font-size: 10px;
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-threshold-line {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.chart-end-label {
+  font-size: 11px;
+  fill: var(--text-secondary);
+}
+
+.chart-crosshair {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-key {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+  flex: none;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 2;
+}
+
+.chart-tooltip-x {
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-tooltip-value {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip-label {
+  color: var(--text-secondary);
+}
+
+.drift-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}

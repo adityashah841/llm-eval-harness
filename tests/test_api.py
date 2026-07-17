@@ -129,7 +129,7 @@ def test_completed_run_is_persisted_and_appears_in_timeseries(client):
     point = next((p for p in timeseries if p["run_id"] == run_id), None)
     assert point is not None
     assert point["model_name"] == "gemma3:4b"
-    assert point["dataset"] == "datasets\\legal_qa" or point["dataset"] == "datasets/legal_qa"
+    assert point["dataset"] == "datasets/legal_qa"
     assert point["rougeL_mean"] is not None
     assert point["halluc_rate"] in (0.0, 0.5, 1.0)
 

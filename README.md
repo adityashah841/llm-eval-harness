@@ -117,7 +117,7 @@ Interactive docs at [http://localhost:8000/docs](http://localhost:8000/docs).
 | `GET` | `/runs/{id}` | Run status (`pending` / `running` / `completed` / `failed`) |
 | `GET` | `/runs/{id}/results` | Per-sample scores (ROUGE, hallucination flag, latency) once complete |
 | `GET` | `/models` | Models available for evaluation, live from Ollama when reachable |
-| `GET` | `/metrics/timeseries` | Aggregated per-model metrics across historical MLflow runs |
+| `GET` | `/metrics/timeseries` | Aggregated per-`(run, model)` metrics from the persistent SQLite store |
 
 ```bash
 curl -X POST http://localhost:8000/runs \
@@ -160,8 +160,9 @@ Open [http://localhost:5173](http://localhost:5173). The API must be running
   hallucination flag.
 - **Model comparison** — side-by-side aggregate scores (ROUGE, hallucination
   rate, latency) for every model in a multi-model run.
-- **System health** — placeholder; wired up to real trend data in
-  Checkpoint 4 once persistent metrics storage (Checkpoint 3) exists.
+- **System health** — latency percentile trends, hallucination-rate trend,
+  and a rolling accuracy drift flag, sourced from `GET /metrics/timeseries`.
+  See [Observability dashboard](#observability-dashboard) below.
 
 ### Build & lint
 
@@ -194,6 +195,23 @@ trigger through the API.
 uv run python scripts/scheduled_benchmark.py
 ```
 
+## Observability dashboard
+
+The frontend's **System health** page (`/health`) turns the persistent metrics
+store into a monitoring view, scoped by a model + dataset filter:
+
+- **Latency percentiles over time** — p50 and p95 as a two-series trend line.
+- **Hallucination-rate trend** — flagged-response rate per run.
+- **Accuracy trend & drift flag** — ROUGE-L per run against a rolling
+  threshold: the mean of the previous 5 runs minus a 15% tolerance. If the
+  latest run's ROUGE-L falls below that line, the page surfaces a
+  `drift detected` banner instead of silently logging a bad run.
+- A raw data table beneath the charts keeps every value reachable without
+  hovering, for accessibility and for copy-pasting into other tools.
+
+This is read-only against the same `/metrics/timeseries` endpoint the CLI and
+scheduled benchmark job feed — no separate observability backend.
+
 ## Project structure
 
 ```
@@ -214,6 +232,7 @@ frontend/
 └── src/
     ├── api/         # typed fetch client for the FastAPI backend
     ├── pages/       # Run configuration, Results, Comparison, System health
+    ├── components/  # Nav, TrendChart (shared SVG line chart)
     └── context/     # RunsContext — tracks runs triggered this session
 datasets/
 ├── legal_qa/        # 5 hand-written QA pairs (+ generated ones)

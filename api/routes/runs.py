@@ -67,7 +67,10 @@ async def _execute_run(
 
 @router.post("", response_model=RunSummary, status_code=202)
 async def create_run(payload: RunCreateRequest, background_tasks: BackgroundTasks):
-    dataset_path = str(_resolve_dataset(payload.dataset))
+    # .as_posix(): keep the stored dataset path platform-independent (forward
+    # slashes) so runs triggered from Windows and from CI/Linux group together
+    # under the same key in /metrics/timeseries.
+    dataset_path = _resolve_dataset(payload.dataset).as_posix()
 
     record = run_store.create(dataset=dataset_path, models=list(payload.models))
     background_tasks.add_task(

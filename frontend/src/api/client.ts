@@ -47,9 +47,14 @@ export function getRunResults(runId: string): Promise<SampleResult[]> {
   return request<SampleResult[]>(`/runs/${runId}/results`);
 }
 
-export function getTimeseries(params?: { model?: string; limit?: number }): Promise<TimeseriesPoint[]> {
+export function getTimeseries(params?: {
+  model?: string;
+  dataset?: string;
+  limit?: number;
+}): Promise<TimeseriesPoint[]> {
   const qs = new URLSearchParams();
   if (params?.model) qs.set('model', params.model);
+  if (params?.dataset) qs.set('dataset', params.dataset);
   if (params?.limit) qs.set('limit', String(params.limit));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return request<TimeseriesPoint[]>(`/metrics/timeseries${suffix}`);
