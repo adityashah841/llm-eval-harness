@@ -10,6 +10,7 @@ No API keys, no paid services — everything runs on the developer's machine.
 
 GitHub: https://github.com/adityashah841/llm-eval-harness
 Owner: adityashah841
+Do not give claude the co-ownership. Let it be completely owned by adityashah841 and the repository must not show any commits by claude.
 
 ## Tech Stack
 
