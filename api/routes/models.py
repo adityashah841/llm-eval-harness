@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 import httpx
@@ -7,7 +8,7 @@ from ..schemas import ModelInfo
 
 router = APIRouter(tags=["models"])
 
-OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Mirrors llm_eval/dashboard/app.py::AVAILABLE_MODELS — used as a fallback
 # when Ollama isn't reachable so the endpoint stays useful offline.

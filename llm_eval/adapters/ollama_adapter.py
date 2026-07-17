@@ -1,11 +1,15 @@
+import os
+
 import httpx
 from .base import BaseAdapter, ModelResponse
+
+DEFAULT_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 class OllamaAdapter(BaseAdapter):
     """Adapter for any model served locally by Ollama. Always free."""
 
-    def __init__(self, model_name: str, base_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str, base_url: str = DEFAULT_BASE_URL):
         super().__init__(model_name)
         self.base_url = base_url
 

@@ -92,6 +92,11 @@ python scripts/generate_tests.py --domain code_gen --count 10
 docker-compose up
 ```
 
+This starts four services: the Streamlit `dashboard` (8501), `mlflow` ui
+(5000), the FastAPI `api` (8000), and the `frontend` (5173, served via
+nginx). `api` and `dashboard` both reach the host's Ollama through
+`host.docker.internal`.
+
 ## API (productionized layer)
 
 A FastAPI service exposes the same evaluation engine used by the CLI and the
@@ -263,6 +268,40 @@ MLflow  +  Streamlit dashboard  +  CSV export
 
 All model calls are fired in parallel per sample — total eval time equals the
 slowest model, not the sum of all four.
+
+## Deployment (AWS)
+
+CI (`.github/workflows/eval.yml`) runs on every push/PR to `main`:
+`eval-smoke-test` (the existing Ollama smoke test), `backend-tests`
+(`pytest tests/test_api.py`, no Ollama needed — HTTP calls are stubbed), and
+`frontend-checks` (`npm run lint && npm run build`). A `deploy` job runs
+after all three succeed, but only on a push to `main`.
+
+`deploy` builds `api/Dockerfile` and `frontend/Dockerfile`, pushes both to
+ECR, and redeploys two AWS App Runner services from the new images. It
+authenticates via GitHub's OIDC provider (no long-lived AWS keys in
+secrets) and is a no-op — it logs a message and exits cleanly — until the
+one-time AWS setup below is done, so it never blocks CI for anyone who
+hasn't configured deployment.
+
+**One-time setup, out of band (not something CI can do for you):**
+
+1. Create two ECR repositories: `llm-eval-harness/api`, `llm-eval-harness/frontend`.
+2. Create two App Runner services (source: the ECR repos above, port 8000
+   for the api service and port 80 for the frontend service). Give the api
+   service's App Runner instance role network access to wherever Ollama is
+   reachable from (App Runner has no built-in host-network escape hatch —
+   plan on a small always-on Ollama host, e.g. an EC2 box on the same VPC,
+   rather than `host.docker.internal`, which only works in local Docker).
+3. Add a GitHub OIDC identity provider to the AWS account (one-time, if not
+   already present) and an IAM role that trusts
+   `repo:adityashah841/llm-eval-harness:ref:refs/heads/main`, scoped to
+   `ecr:*` on the two repos above and `apprunner:StartDeployment` on the two
+   services.
+4. Add repo secrets: `AWS_DEPLOY_ROLE_ARN` (the role from step 3),
+   `AWS_APPRUNNER_API_SERVICE_ARN`, `AWS_APPRUNNER_FRONTEND_SERVICE_ARN`,
+   and `API_PUBLIC_URL` (the api service's App Runner URL, baked into the
+   frontend build as `VITE_API_BASE_URL`).
 
 ## Key design decisions
 

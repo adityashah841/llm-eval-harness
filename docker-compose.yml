@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   dashboard:
     build: .
@@ -22,3 +21,29 @@ services:
       - "5000:5000"
     volumes:
       - ./mlruns:/mlruns
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - LLM_EVAL_DB_PATH=/app/data/metrics.db
+    volumes:
+      - ./datasets:/app/datasets
+      - ./data:/app/data
+      - ./mlruns:/app/mlruns
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
