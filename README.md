@@ -226,14 +226,17 @@ llm_eval/
 ├── runner/          # Async parallel runner, dataset loader, EvalResult
 └── dashboard/       # Streamlit app (rapid local prototyping)
 api/
-├── main.py          # FastAPI app
-├── routes/          # runs, models, metrics endpoints
-├── schemas.py        # Pydantic request/response models
-├── store.py          # In-memory run registry (per-process run status)
-└── db.py             # SQLite persistence — the source for /metrics/timeseries
+├── Dockerfile         # api container image (built by docker-compose and CI deploy)
+├── main.py            # FastAPI app
+├── routes/            # runs, models, metrics endpoints
+├── schemas.py         # Pydantic request/response models
+├── store.py           # In-memory run registry (per-process run status)
+└── db.py              # SQLite persistence — the source for /metrics/timeseries
 data/
 └── metrics.db       # Persisted run + sample results (checked into git)
 frontend/
+├── Dockerfile       # multi-stage build → nginx-served static bundle
+├── nginx.conf       # SPA fallback (try_files → index.html)
 └── src/
     ├── api/         # typed fetch client for the FastAPI backend
     ├── pages/       # Run configuration, Results, Comparison, System health
@@ -249,6 +252,12 @@ scripts/
 └── scheduled_benchmark.py  # Fixed benchmark run by the cron workflow, persists to data/metrics.db
 tests/
 └── test_api.py      # FastAPI endpoint tests
+.github/workflows/
+├── eval.yml                 # CI: Ollama smoke test, backend tests, frontend
+│                             # build/lint, AWS deploy (no-ops until configured)
+└── scheduled-benchmark.yml  # Daily cron: re-runs a fixed benchmark, commits data/metrics.db
+Dockerfile            # Streamlit dashboard image
+docker-compose.yml    # dashboard + mlflow + api + frontend, wired to host Ollama
 ```
 
 ## Architecture
