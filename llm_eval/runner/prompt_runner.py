@@ -1,7 +1,6 @@
 import asyncio
 import mlflow
-from contextlib import nullcontext
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass, asdict
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -71,13 +70,21 @@ class PromptRunner:
         self, samples: List[EvalSample], run_name: str = "eval_run"
     ) -> List[EvalResult]:
         all_results = []
-        ctx = mlflow.start_run(run_name=run_name) if self.use_mlflow else nullcontext()
 
-        with ctx:
-            if self.use_mlflow:
-                mlflow.log_param("num_samples", len(samples))
-                mlflow.log_param("models", [a.model_name for a in self.adapters])
+        # Uses MlflowClient with an explicit run_id rather than the fluent
+        # mlflow.start_run() API: the fluent API tracks a single global
+        # "active run" per process, so two runs triggered close together
+        # (e.g. two API-triggered evals) crash with "Run ... is already
+        # active" instead of both logging independently.
+        client: Optional[mlflow.tracking.MlflowClient] = None
+        run_id: Optional[str] = None
+        if self.use_mlflow:
+            client = mlflow.tracking.MlflowClient()
+            run_id = client.create_run(experiment_id="0", run_name=run_name).info.run_id
+            client.log_param(run_id, "num_samples", len(samples))
+            client.log_param(run_id, "models", [a.model_name for a in self.adapters])
 
+        try:
             with Progress(
                 SpinnerColumn(), TextColumn("{task.description}")
             ) as progress:
@@ -98,20 +105,27 @@ class PromptRunner:
                         all_results.append(result)
                     progress.advance(task)
 
-            if self.use_mlflow and all_results:
+            if client and all_results:
                 df = pd.DataFrame([asdict(r) for r in all_results])
                 for model in df["model_name"].unique():
                     mdf = df[df["model_name"] == model]
                     prefix = model.replace(":", "_").replace("/", "_")
-                    mlflow.log_metric(f"{prefix}_rouge1_mean",
+                    client.log_metric(run_id, f"{prefix}_rouge1_mean",
                                       round(float(mdf["rouge1"].mean()), 4))
-                    mlflow.log_metric(f"{prefix}_rougeL_mean",
+                    client.log_metric(run_id, f"{prefix}_rougeL_mean",
                                       round(float(mdf["rougeL"].mean()), 4))
-                    mlflow.log_metric(f"{prefix}_halluc_rate",
+                    client.log_metric(run_id, f"{prefix}_halluc_rate",
                                       round(float(mdf["hallucination_flag"].mean()), 4))
-                    mlflow.log_metric(f"{prefix}_latency_p50",
+                    client.log_metric(run_id, f"{prefix}_latency_p50",
                                       round(float(mdf["latency_ms"].median()), 2))
-                    mlflow.log_metric(f"{prefix}_latency_p95",
+                    client.log_metric(run_id, f"{prefix}_latency_p95",
                                       round(float(mdf["latency_ms"].quantile(0.95)), 2))
+        except Exception:
+            if client and run_id:
+                client.set_terminated(run_id, status="FAILED")
+            raise
+        else:
+            if client and run_id:
+                client.set_terminated(run_id, status="FINISHED")
 
         return all_results
