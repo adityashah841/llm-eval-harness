@@ -59,17 +59,31 @@ export default function TrendChart({
     (_, i) => yDomain[0] + ((yDomain[1] - yDomain[0]) * i) / tickCount
   );
   const longestTickLabel = Math.max(...yTicks.map((t) => yFormat(t).length));
-  const PAD = { ...BASE_PAD, left: Math.max(BASE_PAD.left, longestTickLabel * 6 + 16) };
+
+  const innerH = height - BASE_PAD.top - BASE_PAD.bottom;
+  const yScale = (y: number) =>
+    yDomain[1] === yDomain[0]
+      ? BASE_PAD.top + innerH / 2
+      : BASE_PAD.top + innerH - ((y - yDomain[0]) / (yDomain[1] - yDomain[0])) * innerH;
+
+  const lastPoints = series.map((s) => s.points.slice().sort((a, b) => a.x - b.x).at(-1));
+  const lastYPixels = lastPoints.filter((p) => p).map((p) => yScale(p!.y)).sort((a, b) => a - b);
+  const labelsCollide = lastYPixels.some((y, i) => i > 0 && y - lastYPixels[i - 1] < 14);
+  // Converging end-labels read as noise (see marks-and-anatomy.md) — fall back to
+  // the legend + tooltip instead of stacking overlapping text.
+  const showEndLabels = series.length <= 4 && !labelsCollide;
+  const longestEndLabel = showEndLabels ? Math.max(...series.map((s) => s.label.length)) : 0;
+
+  const PAD = {
+    ...BASE_PAD,
+    left: Math.max(BASE_PAD.left, longestTickLabel * 6 + 16),
+    right: Math.max(BASE_PAD.right, longestEndLabel * 6 + 16),
+  };
 
   const innerW = WIDTH - PAD.left - PAD.right;
-  const innerH = height - PAD.top - PAD.bottom;
 
   const xScale = (x: number) =>
     xDomain[1] === xDomain[0] ? PAD.left + innerW / 2 : PAD.left + ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * innerW;
-  const yScale = (y: number) =>
-    yDomain[1] === yDomain[0]
-      ? PAD.top + innerH / 2
-      : PAD.top + innerH - ((y - yDomain[0]) / (yDomain[1] - yDomain[0])) * innerH;
 
   let nearestX: number | null = null;
   if (hoverX !== null && xs.length > 0) {
@@ -169,7 +183,7 @@ export default function TrendChart({
                       strokeWidth={2}
                     />
                   )}
-                  {last && series.length <= 4 && (
+                  {last && showEndLabels && (
                     <text
                       x={xScale(last.x) + 8}
                       y={yScale(last.y)}
