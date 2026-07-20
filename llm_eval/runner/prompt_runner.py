@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import mlflow
 from typing import List, Optional
 from dataclasses import dataclass, asdict
@@ -10,6 +11,20 @@ from ..adapters.base import BaseAdapter, ModelResponse
 from ..evaluators.rouge_evaluator import RougeEvaluator
 from ..evaluators.hallucination_evaluator import HallucinationEvaluator
 from .dataset_loader import EvalSample
+
+# rich's spinner animation writes Unicode Braille frames (e.g. U+280B); on
+# Windows, a background process's stdout defaults to the system codepage
+# (cp1252) rather than UTF-8, so the very first frame raises
+# UnicodeEncodeError and aborts the run before any sample executes. This
+# never changes what's printed on a real terminal (already UTF-8-capable
+# there) — it only stops a cosmetic progress spinner from crashing the run
+# when stdout can't represent it.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(errors="replace")
+        except (ValueError, OSError):
+            pass
 
 
 @dataclass
