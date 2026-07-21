@@ -120,6 +120,65 @@ def save_run(record, db_path: Optional[Path] = None) -> None:
         conn.commit()
 
 
+def fetch_run(run_id: str, db_path: Optional[Path] = None) -> Optional[dict]:
+    """A run's summary from the persistent store — the fallback for
+    GET /runs/{id} once the in-memory run registry has forgotten it (e.g.
+    after an API process restart)."""
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            return None
+        sample_count = conn.execute(
+            "SELECT COUNT(*) FROM sample_results WHERE run_id = ?", (run_id,)
+        ).fetchone()[0]
+
+    return {
+        "id": row["id"],
+        "dataset": row["dataset"],
+        "models": json.loads(row["models"]),
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "sample_count": sample_count,
+        "error": row["error"],
+    }
+
+
+def fetch_run_results(run_id: str, db_path: Optional[Path] = None) -> List[dict]:
+    """Per-sample results for a run from the persistent store — the
+    fallback for GET /runs/{id}/results."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """SELECT sample_id, domain, prompt, expected, model_name, response_text,
+                      latency_ms, input_tokens, output_tokens, rouge1, rouge2, rougeL,
+                      nli_label, nli_confidence, hallucination_flag
+               FROM sample_results WHERE run_id = ?""",
+            (run_id,),
+        ).fetchall()
+
+    return [
+        {
+            "sample_id": r["sample_id"],
+            "domain": r["domain"],
+            "prompt": r["prompt"],
+            "expected": r["expected"],
+            "model_name": r["model_name"],
+            "response_text": r["response_text"],
+            "latency_ms": r["latency_ms"],
+            "input_tokens": r["input_tokens"],
+            "output_tokens": r["output_tokens"],
+            "rouge1": r["rouge1"],
+            "rouge2": r["rouge2"],
+            "rougeL": r["rougeL"],
+            "nli_label": r["nli_label"],
+            "nli_confidence": r["nli_confidence"],
+            "hallucination_flag": bool(r["hallucination_flag"]),
+        }
+        for r in rows
+    ]
+
+
 def _percentile(sorted_values: List[float], pct: float) -> float:
     if not sorted_values:
         return 0.0

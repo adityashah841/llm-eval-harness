@@ -8,7 +8,7 @@ from llm_eval.adapters import OllamaAdapter
 from llm_eval.runner.dataset_loader import load_dataset
 from llm_eval.runner.prompt_runner import PromptRunner
 
-from ..db import save_run
+from ..db import fetch_run, fetch_run_results, save_run
 from ..schemas import RunCreateRequest, RunSummary, SampleResult
 from ..store import RunRecord, RunStatus, run_store
 
@@ -82,38 +82,47 @@ async def create_run(payload: RunCreateRequest, background_tasks: BackgroundTask
 @router.get("/{run_id}", response_model=RunSummary)
 async def get_run(run_id: str):
     record = run_store.get(run_id)
-    if record is None:
+    if record is not None:
+        return _to_summary(record)
+
+    # Falls back to the persistent store once the in-memory run registry has
+    # forgotten this run (e.g. after an API process restart) — every run
+    # that ever completed or failed was already saved there.
+    persisted = fetch_run(run_id)
+    if persisted is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return _to_summary(record)
+    return RunSummary(**persisted)
 
 
 @router.get("/{run_id}/results", response_model=List[SampleResult])
 async def get_run_results(run_id: str):
     record = run_store.get(run_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if record.status in (RunStatus.PENDING, RunStatus.RUNNING):
-        raise HTTPException(
-            status_code=409, detail=f"Run is {record.status.value}, results not ready yet"
-        )
+    if record is not None:
+        if record.status in (RunStatus.PENDING, RunStatus.RUNNING):
+            raise HTTPException(
+                status_code=409, detail=f"Run is {record.status.value}, results not ready yet"
+            )
+        return [
+            SampleResult(
+                sample_id=r.sample_id,
+                domain=r.domain,
+                prompt=r.prompt,
+                expected=r.expected,
+                model_name=r.model_name,
+                response_text=r.response_text,
+                latency_ms=r.latency_ms,
+                input_tokens=r.input_tokens,
+                output_tokens=r.output_tokens,
+                rouge1=r.rouge1,
+                rouge2=r.rouge2,
+                rougeL=r.rougeL,
+                nli_label=r.nli_label,
+                nli_confidence=r.nli_confidence,
+                hallucination_flag=r.hallucination_flag,
+            )
+            for r in record.results
+        ]
 
-    return [
-        SampleResult(
-            sample_id=r.sample_id,
-            domain=r.domain,
-            prompt=r.prompt,
-            expected=r.expected,
-            model_name=r.model_name,
-            response_text=r.response_text,
-            latency_ms=r.latency_ms,
-            input_tokens=r.input_tokens,
-            output_tokens=r.output_tokens,
-            rouge1=r.rouge1,
-            rouge2=r.rouge2,
-            rougeL=r.rougeL,
-            nli_label=r.nli_label,
-            nli_confidence=r.nli_confidence,
-            hallucination_flag=r.hallucination_flag,
-        )
-        for r in record.results
-    ]
+    if fetch_run(run_id) is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return [SampleResult(**row) for row in fetch_run_results(run_id)]

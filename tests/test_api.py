@@ -97,6 +97,43 @@ def test_create_and_fetch_run(client):
     assert results[0]["response_text"] == "This is a stubbed response for testing."
 
 
+def test_run_is_still_reachable_after_in_memory_registry_forgets_it(client):
+    """GET /runs/{id} and /results must survive an API process restart.
+
+    The in-memory run_store is wiped on every restart; a completed run
+    should still be readable from the persistent store rather than 404ing.
+    """
+    resp = client.post(
+        "/runs",
+        json={
+            "dataset": "legal_qa",
+            "models": ["gemma3:4b"],
+            "smoke_test": True,
+            "use_mlflow": False,
+        },
+    )
+    run_id = resp.json()["id"]
+    assert client.get(f"/runs/{run_id}").json()["status"] == "completed"
+
+    # Simulate a restart: the in-memory registry forgets every run.
+    run_store._runs.clear()
+
+    status_resp = client.get(f"/runs/{run_id}")
+    assert status_resp.status_code == 200
+    status_body = status_resp.json()
+    assert status_body["status"] == "completed"
+    assert status_body["dataset"] == "datasets/legal_qa"
+    assert status_body["models"] == ["gemma3:4b"]
+    assert status_body["sample_count"] == 2
+
+    results_resp = client.get(f"/runs/{run_id}/results")
+    assert results_resp.status_code == 200
+    results = results_resp.json()
+    assert len(results) == 2
+    assert results[0]["model_name"] == "gemma3:4b"
+    assert results[0]["response_text"] == "This is a stubbed response for testing."
+
+
 def test_get_unknown_run_404(client):
     resp = client.get("/runs/does-not-exist")
     assert resp.status_code == 404
