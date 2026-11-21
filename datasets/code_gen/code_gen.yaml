@@ -1,27 +1,113 @@
-- id: cg_001
-  prompt: "Write a Python function that checks if a string is a palindrome."
-  expected: "def is_palindrome(s): s = s.lower().replace(' ', ''); return s == s[::-1]"
-  domain: code_gen
-  tags: [python, strings]
-  difficulty: easy
+# Code is scored by running it: the model's code is executed together with
+# `tests` (plain asserts) and passes if every assert holds. `expected` is a
+# reference solution — it is verified against the same tests in
+# tests/test_datasets.py, but it is not used for scoring.
+system_prompt: >-
+  Reply with only the requested Python code in a single ```python code block.
+  Use the exact function name given. No explanation and no example usage.
 
-- id: cg_002
-  prompt: "Write a Python function to flatten a nested list of arbitrary depth."
-  expected: "def flatten(lst): result = []; [result.extend(flatten(i)) if isinstance(i, list) else result.append(i) for i in lst]; return result"
-  domain: code_gen
-  tags: [python, recursion]
-  difficulty: medium
+samples:
+  - id: cg_001
+    prompt: "Write a Python function `is_palindrome(s)` that returns True if the string s reads the same forwards and backwards, ignoring letter case and spaces, and False otherwise."
+    expected: |
+      def is_palindrome(s):
+          s = s.lower().replace(" ", "")
+          return s == s[::-1]
+    tests: |
+      assert is_palindrome("racecar") is True
+      assert is_palindrome("Never odd or even") is True
+      assert is_palindrome("hello") is False
+      assert is_palindrome("") is True
+    domain: code_gen
+    tags: [python, strings]
+    difficulty: easy
 
-- id: cg_003
-  prompt: "Write a Python decorator that retries a function up to 3 times on exception."
-  expected: "import functools\ndef retry(func):\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        for i in range(3):\n            try: return func(*args, **kwargs)\n            except Exception:\n                if i == 2: raise\n    return wrapper"
-  domain: code_gen
-  tags: [python, decorators]
-  difficulty: hard
+  - id: cg_002
+    prompt: "Write a Python function `flatten(lst)` that flattens a nested list of arbitrary depth into a single flat list, preserving order."
+    expected: |
+      def flatten(lst):
+          result = []
+          for item in lst:
+              if isinstance(item, list):
+                  result.extend(flatten(item))
+              else:
+                  result.append(item)
+          return result
+    tests: |
+      assert flatten([1, [2, [3, [4]], 5]]) == [1, 2, 3, 4, 5]
+      assert flatten([]) == []
+      assert flatten([[[]], [1], [[2, 3]]]) == [1, 2, 3]
+      assert flatten(["a", ["b", ["c"]]]) == ["a", "b", "c"]
+    domain: code_gen
+    tags: [python, recursion]
+    difficulty: medium
 
-- id: cg_004
-  prompt: "Write a Python context manager that times a block of code."
-  expected: "import time\nfrom contextlib import contextmanager\n@contextmanager\ndef timer():\n    start = time.perf_counter()\n    yield\n    print(f'Elapsed: {time.perf_counter() - start:.3f}s')"
-  domain: code_gen
-  tags: [python, context_managers]
-  difficulty: medium
+  - id: cg_003
+    prompt: "Write a Python decorator `retry` (used as `@retry`, without arguments) that calls the decorated function up to 3 times in total. Return the first successful result; if all 3 attempts raise an exception, re-raise the last exception."
+    expected: |
+      import functools
+
+      def retry(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              for attempt in range(3):
+                  try:
+                      return func(*args, **kwargs)
+                  except Exception:
+                      if attempt == 2:
+                          raise
+          return wrapper
+    tests: |
+      calls = {"n": 0}
+
+      @retry
+      def flaky():
+          calls["n"] += 1
+          if calls["n"] < 3:
+              raise ValueError("not yet")
+          return "ok"
+
+      assert flaky() == "ok"
+      assert calls["n"] == 3
+
+      attempts = {"n": 0}
+
+      @retry
+      def always_fails():
+          attempts["n"] += 1
+          raise KeyError("boom")
+
+      try:
+          always_fails()
+          raise AssertionError("expected KeyError")
+      except KeyError:
+          pass
+      assert attempts["n"] == 3
+    domain: code_gen
+    tags: [python, decorators]
+    difficulty: hard
+
+  - id: cg_004
+    prompt: "Write a Python context manager function `timer()` (using contextlib.contextmanager) that yields an object; when the with-block exits, that object's `elapsed` attribute must be set to the block's elapsed wall-clock time in seconds as a float."
+    expected: |
+      import time
+      from contextlib import contextmanager
+      from types import SimpleNamespace
+
+      @contextmanager
+      def timer():
+          t = SimpleNamespace(elapsed=0.0)
+          start = time.perf_counter()
+          try:
+              yield t
+          finally:
+              t.elapsed = time.perf_counter() - start
+    tests: |
+      import time
+      with timer() as t:
+          time.sleep(0.05)
+      assert isinstance(t.elapsed, float)
+      assert 0.04 <= t.elapsed < 2.0
+    domain: code_gen
+    tags: [python, context_managers]
+    difficulty: medium

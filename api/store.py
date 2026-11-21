@@ -4,13 +4,14 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
-from llm_eval.runner.prompt_runner import EvalResult
+from llm_eval.runner.prompt_runner import EVAL_VERSION, EvalFailure, EvalResult
 
 
 class RunStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    PARTIAL = "partial"  # finished, but some model calls failed
     FAILED = "failed"
 
 
@@ -24,14 +25,18 @@ class RunRecord:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
+    eval_version: int = EVAL_VERSION
+    model_digests: Dict[str, Optional[str]] = field(default_factory=dict)
     results: List[EvalResult] = field(default_factory=list)
+    failures: List[EvalFailure] = field(default_factory=list)
 
 
 class RunStore:
     """In-memory registry of eval runs, keyed by run id.
 
-    Scoped to a single API process — history beyond process lifetime lives in
-    MLflow (and, from Checkpoint 3 onward, the persistent metrics store).
+    Scoped to a single API process. Every run is also written to the SQLite
+    store (api/db.py) when it starts and when it finishes, which is what
+    GET /runs falls back to after a restart.
     """
 
     def __init__(self):

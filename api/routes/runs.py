@@ -1,28 +1,39 @@
+import asyncio
+import hmac
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
 
 from llm_eval.adapters import OllamaAdapter
 from llm_eval.runner.dataset_loader import load_dataset
 from llm_eval.runner.prompt_runner import PromptRunner
 
-from ..db import fetch_run, fetch_run_results, save_run
+from ..config import api_key, max_concurrent_runs
+from ..db import fetch_run, fetch_run_results, list_runs, save_run
 from ..schemas import RunCreateRequest, RunSummary, SampleResult
 from ..store import RunRecord, RunStatus, run_store
+from .datasets import resolve_dataset
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
+# One semaphore per event loop (test clients may each run their own loop).
+_semaphores: Dict[int, asyncio.Semaphore] = {}
 
-def _resolve_dataset(dataset: str) -> Path:
-    p = Path(dataset)
-    if p.exists():
-        return p
-    candidate = Path("datasets") / dataset
-    if candidate.exists():
-        return candidate
-    raise HTTPException(status_code=404, detail=f"Dataset not found: {dataset}")
+
+def _run_slots() -> asyncio.Semaphore:
+    loop_id = id(asyncio.get_running_loop())
+    if loop_id not in _semaphores:
+        _semaphores[loop_id] = asyncio.Semaphore(max_concurrent_runs())
+    return _semaphores[loop_id]
+
+
+def _require_api_key(x_api_key: Optional[str]) -> None:
+    expected = api_key()
+    if expected is None:
+        return
+    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header")
 
 
 def _to_summary(record: RunRecord) -> RunSummary:
@@ -36,47 +47,79 @@ def _to_summary(record: RunRecord) -> RunSummary:
         completed_at=record.completed_at,
         sample_count=len(record.results),
         error=record.error,
+        eval_version=record.eval_version,
+        model_digests=record.model_digests,
+        failures=[
+            {"sample_id": f.sample_id, "model_name": f.model_name, "error": f.error}
+            for f in record.failures
+        ],
     )
 
 
 async def _execute_run(
-    run_id: str, dataset_path: str, models: List[str], smoke_test: bool, use_mlflow: bool
+    run_id: str, dataset_dir: str, models: List[str], smoke_test: bool, use_mlflow: bool, parallel: bool
 ) -> None:
     record = run_store.get(run_id)
     if record is None:
         return
 
-    record.status = RunStatus.RUNNING
-    record.started_at = datetime.now(timezone.utc)
-    try:
-        samples = load_dataset(dataset_path)
-        if smoke_test:
-            samples = samples[:2]
-
-        adapters = [OllamaAdapter(m) for m in models]
-        runner = PromptRunner(adapters, use_mlflow=use_mlflow)
-        record.results = await runner.run(samples, run_name=run_id)
-        record.status = RunStatus.COMPLETED
-    except Exception as exc:
-        record.status = RunStatus.FAILED
-        record.error = str(exc)
-    finally:
-        record.completed_at = datetime.now(timezone.utc)
+    async with _run_slots():
+        record.status = RunStatus.RUNNING
+        record.started_at = datetime.now(timezone.utc)
         save_run(record)
+        try:
+            samples = load_dataset(dataset_dir)
+            if smoke_test:
+                samples = samples[:2]
+
+            adapters = [OllamaAdapter(m) for m in models]
+            runner = PromptRunner(adapters, use_mlflow=use_mlflow, parallel=parallel)
+            outcome = await runner.run(samples, run_name=run_id)
+            record.results = outcome.results
+            record.failures = outcome.failures
+            record.model_digests = {r.model_name: r.model_digest for r in outcome.results}
+            record.status = RunStatus(outcome.status)
+            record.error = outcome.failure_summary()
+        except Exception as exc:
+            record.status = RunStatus.FAILED
+            record.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            record.completed_at = datetime.now(timezone.utc)
+            save_run(record)
 
 
 @router.post("", response_model=RunSummary, status_code=202)
-async def create_run(payload: RunCreateRequest, background_tasks: BackgroundTasks):
-    # .as_posix(): keep the stored dataset path platform-independent (forward
-    # slashes) so runs triggered from Windows and from CI/Linux group together
-    # under the same key in /metrics/timeseries.
-    dataset_path = _resolve_dataset(payload.dataset).as_posix()
+async def create_run(
+    payload: RunCreateRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    _require_api_key(x_api_key)
+    dataset_key, dataset_dir = resolve_dataset(payload.dataset)
 
-    record = run_store.create(dataset=dataset_path, models=list(payload.models))
+    record = run_store.create(dataset=dataset_key, models=list(dict.fromkeys(payload.models)))
+    save_run(record)
     background_tasks.add_task(
-        _execute_run, record.id, dataset_path, list(payload.models), payload.smoke_test, payload.use_mlflow
+        _execute_run,
+        record.id,
+        str(dataset_dir),
+        record.models,
+        payload.smoke_test,
+        payload.use_mlflow,
+        payload.parallel,
     )
     return _to_summary(record)
+
+
+@router.get("", response_model=List[RunSummary])
+async def get_runs(limit: int = Query(50, ge=1, le=500)):
+    """Most recent runs, newest first (from the persistent store, with live
+    status for runs this process is executing)."""
+    summaries = []
+    for row in list_runs(limit=limit):
+        live = run_store.get(row["id"])
+        summaries.append(_to_summary(live) if live else RunSummary(**row))
+    return summaries
 
 
 @router.get("/{run_id}", response_model=RunSummary)
@@ -86,8 +129,7 @@ async def get_run(run_id: str):
         return _to_summary(record)
 
     # Falls back to the persistent store once the in-memory run registry has
-    # forgotten this run (e.g. after an API process restart) — every run
-    # that ever completed or failed was already saved there.
+    # forgotten this run (e.g. after an API process restart).
     persisted = fetch_run(run_id)
     if persisted is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -102,27 +144,11 @@ async def get_run_results(run_id: str):
             raise HTTPException(
                 status_code=409, detail=f"Run is {record.status.value}, results not ready yet"
             )
-        return [
-            SampleResult(
-                sample_id=r.sample_id,
-                domain=r.domain,
-                prompt=r.prompt,
-                expected=r.expected,
-                model_name=r.model_name,
-                response_text=r.response_text,
-                latency_ms=r.latency_ms,
-                input_tokens=r.input_tokens,
-                output_tokens=r.output_tokens,
-                rouge1=r.rouge1,
-                rouge2=r.rouge2,
-                rougeL=r.rougeL,
-                nli_label=r.nli_label,
-                nli_confidence=r.nli_confidence,
-                hallucination_flag=r.hallucination_flag,
-            )
-            for r in record.results
-        ]
+        return [SampleResult(**r.__dict__) for r in record.results]
 
-    if fetch_run(run_id) is None:
+    persisted = fetch_run(run_id)
+    if persisted is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    if persisted["status"] in ("pending", "running"):
+        raise HTTPException(status_code=409, detail=f"Run is {persisted['status']}, results not ready yet")
     return [SampleResult(**row) for row in fetch_run_results(run_id)]

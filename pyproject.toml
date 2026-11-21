@@ -1,16 +1,14 @@
 [project]
 name = "llm-eval-harness"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local LLM evaluation harness: Ollama models scored on ROUGE, sentence-level NLI grounding, unit-test execution and latency, with a FastAPI + React front end."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.3.2",
-    "evaluate>=0.4.6",
     "fastapi>=0.135.3",
     "httpx>=0.28.1",
     "mlflow>=3.11.1",
-    "nltk>=3.9.4",
     "pandas>=2.3.3",
     "pyyaml>=6.0.3",
     "rich>=14.3.3",
@@ -26,3 +24,10 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "requires_models: downloads the real NLI model from Hugging Face (run in CI's model job)",
+]
+addopts = "-m 'not requires_models'"
