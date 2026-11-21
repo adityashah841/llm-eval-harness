@@ -1,5 +1,10 @@
 name: Scheduled benchmark
 
+# Runs the fixed benchmark daily and appends the results to metrics.db on the
+# `benchmark-data` branch. Keeping the database on its own branch means main
+# isn't flooded with a binary commit every day and local runs never conflict
+# with the bot's pushes.
+
 on:
   schedule:
     - cron: "0 6 * * *" # daily at 06:00 UTC
@@ -8,11 +13,29 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: scheduled-benchmark
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: benchmark-data
+  LLM_EVAL_DB_PATH: ${{ github.workspace }}/data/metrics.db
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Restore metrics DB from the data branch
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin "$DATA_BRANCH"; then
+            git show "origin/$DATA_BRANCH:metrics.db" > data/metrics.db
+          else
+            echo "No $DATA_BRANCH branch yet — starting a new database."
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,22 +46,41 @@ jobs:
         run: pip install uv
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Install Ollama and pull benchmark model
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          sleep 8
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags > /dev/null && break; sleep 2; done
           ollama pull gemma3:4b
 
-      - name: Run scheduled benchmark and persist to the metrics DB
+      - name: Run scheduled benchmark
+        id: bench
+        continue-on-error: true
         run: uv run python scripts/scheduled_benchmark.py
 
-      - name: Commit updated metrics DB
+      # Saved even when a run failed, so failures show up in the history.
+      - name: Commit updated metrics DB to the data branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/metrics.db
-          git diff --staged --quiet || git commit -m "chore: scheduled benchmark run [skip ci]"
-          git push
+          WT="$RUNNER_TEMP/data-branch"
+          if git rev-parse --verify --quiet "origin/$DATA_BRANCH" > /dev/null; then
+            git worktree add "$WT" "origin/$DATA_BRANCH"
+            git -C "$WT" checkout -B "$DATA_BRANCH"
+          else
+            git worktree add --detach "$WT"
+            git -C "$WT" checkout --orphan "$DATA_BRANCH"
+            git -C "$WT" rm -rf --quiet .
+          fi
+          cp data/metrics.db "$WT/metrics.db"
+          git -C "$WT" add metrics.db
+          git -C "$WT" diff --staged --quiet || git -C "$WT" commit -m "chore: scheduled benchmark run"
+          git -C "$WT" push origin "$DATA_BRANCH"
+
+      - name: Fail if a benchmark run failed
+        if: steps.bench.outcome == 'failure'
+        run: |
+          echo "At least one benchmark run failed or was partial — see the 'Run scheduled benchmark' step."
+          exit 1

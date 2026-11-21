@@ -1,3 +1,5 @@
+# Ollama must already be running on the host (`ollama serve`), with the
+# models you want to evaluate pulled.
 services:
   dashboard:
     build: .
@@ -7,16 +9,17 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlruns/mlflow.db
     volumes:
       - ./datasets:/app/datasets
       - ./mlruns:/app/mlruns
-      - ./outputs:/app/outputs
+      - hf-cache:/root/.cache/huggingface
 
   mlflow:
     image: python:3.11-slim
     command: >
-      bash -c "pip install mlflow && mlflow ui
-      --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns"
+      bash -c "pip install --no-cache-dir mlflow==3.11.1 && mlflow ui
+      --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlruns/mlflow.db"
     ports:
       - "5000:5000"
     volumes:
@@ -33,10 +36,13 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LLM_EVAL_DB_PATH=/app/data/metrics.db
+      - MLFLOW_TRACKING_URI=sqlite:////app/mlruns/mlflow.db
+      - LLM_EVAL_CORS_ORIGINS=http://localhost:5173
     volumes:
       - ./datasets:/app/datasets
       - ./data:/app/data
       - ./mlruns:/app/mlruns
+      - hf-cache:/root/.cache/huggingface
 
   frontend:
     build:
@@ -47,3 +53,6 @@ services:
       - "5173:80"
     depends_on:
       - api
+
+volumes:
+  hf-cache:

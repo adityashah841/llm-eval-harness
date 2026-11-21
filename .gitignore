@@ -2,8 +2,12 @@ __pycache__/
 *.pyc
 .venv/
 mlruns/
+mlflow.db
 *.egg-info/
 dist/
 .DS_Store
 outputs/
 *.csv
+# Run history is local state. The scheduled benchmark's history lives on the
+# `benchmark-data` branch (see README).
+data/
