@@ -152,6 +152,11 @@ table.data-table th {
   background: color-mix(in srgb, var(--status-critical) 14%, transparent);
 }
 
+.pill-warning {
+  color: var(--series-4);
+  background: color-mix(in srgb, var(--series-4) 14%, transparent);
+}
+
 .pill-neutral {
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--text-secondary) 12%, transparent);

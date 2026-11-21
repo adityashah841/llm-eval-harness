@@ -1,95 +1,66 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getRun, getRunResults } from '../api/client';
-import type { RunSummary, SampleResult } from '../api/types';
-import { useRuns } from '../context/RunsContext';
+import type { SampleResult } from '../api/types';
+import RunFailures from '../components/RunFailures';
+import RunPicker from '../components/RunPicker';
+import StatusPill from '../components/StatusPill';
+import { useRunData } from '../hooks/useRunData';
+import { fmtMs, fmtPct, fmtScore } from '../lib/stats';
 
-type FailureFilter = 'all' | 'hallucinated' | 'clean';
+type OutcomeFilter = 'all' | 'problems' | 'clean';
+
+/** A sample "has a problem" if a sentence was contradicted or its code failed. */
+function hasProblem(r: SampleResult) {
+  return r.hallucination_flag === true || r.tests_passed === false;
+}
 
 export default function ResultsPage() {
-  const { recentRuns } = useRuns();
   const [searchParams, setSearchParams] = useSearchParams();
   const runId = searchParams.get('run') ?? '';
-
-  const [run, setRun] = useState<RunSummary | null>(null);
-  const [results, setResults] = useState<SampleResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { run, results, loading, error } = useRunData(runId);
 
   const [modelFilter, setModelFilter] = useState<string>('all');
-  const [failureFilter, setFailureFilter] = useState<FailureFilter>('all');
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
 
-  useEffect(() => {
-    if (!runId) {
-      setRun(null);
-      setResults([]);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    Promise.all([getRun(runId), getRunResults(runId)])
-      .then(([runData, resultsData]) => {
-        setRun(runData);
-        setResults(resultsData);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [runId]);
-
-  const modelOptions = useMemo(
-    () => Array.from(new Set(results.map((r) => r.model_name))),
-    [results]
-  );
+  const modelOptions = useMemo(() => Array.from(new Set(results.map((r) => r.model_name))), [results]);
+  const isCode = results.length > 0 && results.every((r) => r.tests_passed !== null || r.exec_error);
 
   const filtered = results.filter((r) => {
     if (modelFilter !== 'all' && r.model_name !== modelFilter) return false;
-    if (failureFilter === 'hallucinated' && !r.hallucination_flag) return false;
-    if (failureFilter === 'clean' && r.hallucination_flag) return false;
+    if (outcomeFilter === 'problems' && !hasProblem(r)) return false;
+    if (outcomeFilter === 'clean' && hasProblem(r)) return false;
     return true;
   });
 
   return (
     <div>
       <h1>Results</h1>
-      <p>Per-sample scores for a completed evaluation run.</p>
+      <p>Per-sample scores for an evaluation run.</p>
 
       <div className="card">
-        <div className="field-row">
-          <div className="field">
-            <label htmlFor="run-select">Run</label>
-            <select
-              id="run-select"
-              value={runId}
-              onChange={(e) => setSearchParams(e.target.value ? { run: e.target.value } : {})}
-            >
-              <option value="">Select a run…</option>
-              {recentRuns.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.dataset} · {r.models.join('+')} · {new Date(r.created_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="run-id-input">or paste a run id</label>
-            <input
-              id="run-id-input"
-              value={runId}
-              placeholder="run id"
-              onChange={(e) => setSearchParams(e.target.value ? { run: e.target.value } : {})}
-            />
-          </div>
-        </div>
-
+        <RunPicker
+          idPrefix="results-run"
+          runId={runId}
+          onChange={(id) => setSearchParams(id ? { run: id } : {})}
+        />
         {run && (
           <p>
-            Status: {run.status} · {run.sample_count} sample(s) · {run.models.join(', ')}
+            Status: <StatusPill status={run.status} /> · {run.sample_count} result(s) · {run.models.join(', ')} ·
+            methodology v{run.eval_version}
+          </p>
+        )}
+        {run?.eval_version === 1 && (
+          <p style={{ fontSize: 13 }}>
+            This run used the original scoring (free-length answers, whole-response NLI). Its ROUGE and
+            hallucination numbers are not comparable with newer runs.
           </p>
         )}
       </div>
 
+      {run && <RunFailures run={run} />}
       {error && <div className="error-banner">{error}</div>}
       {loading && <p>Loading…</p>}
+      {run && ['pending', 'running'].includes(run.status) && <p>This run is still {run.status}. Results appear when it finishes.</p>}
 
       {results.length > 0 && (
         <div className="card">
@@ -106,15 +77,15 @@ export default function ResultsPage() {
               </select>
             </div>
             <div className="field">
-              <label htmlFor="failure-filter">Failure type</label>
+              <label htmlFor="outcome-filter">Outcome</label>
               <select
-                id="failure-filter"
-                value={failureFilter}
-                onChange={(e) => setFailureFilter(e.target.value as FailureFilter)}
+                id="outcome-filter"
+                value={outcomeFilter}
+                onChange={(e) => setOutcomeFilter(e.target.value as OutcomeFilter)}
               >
                 <option value="all">All results</option>
-                <option value="hallucinated">Hallucinations only</option>
-                <option value="clean">No hallucination</option>
+                <option value="problems">{isCode ? 'Failed tests only' : 'Contradictions only'}</option>
+                <option value="clean">{isCode ? 'Passed tests only' : 'No contradiction'}</option>
               </select>
             </div>
           </div>
@@ -124,9 +95,16 @@ export default function ResultsPage() {
               <tr>
                 <th>Sample</th>
                 <th>Model</th>
-                <th>ROUGE-L</th>
-                <th>Hallucination</th>
-                <th>Latency (ms)</th>
+                {isCode ? (
+                  <th>Unit tests</th>
+                ) : (
+                  <>
+                    <th>ROUGE-L</th>
+                    <th title="Share of response sentences the NLI model judged supported by the premise">Supported</th>
+                    <th title="Whether any response sentence was contradicted by the premise">Contradiction</th>
+                  </>
+                )}
+                <th>Latency</th>
                 <th>Response</th>
               </tr>
             </thead>
@@ -135,14 +113,36 @@ export default function ResultsPage() {
                 <tr key={`${r.sample_id}-${r.model_name}-${i}`}>
                   <td>{r.sample_id}</td>
                   <td>{r.model_name}</td>
-                  <td>{r.rougeL.toFixed(3)}</td>
-                  <td>
-                    <span className={`pill ${r.hallucination_flag ? 'pill-critical' : 'pill-good'}`}>
-                      {r.hallucination_flag ? 'flagged' : 'clean'}
-                    </span>
+                  {isCode ? (
+                    <td>
+                      {r.tests_passed === null ? (
+                        <span className="pill pill-neutral">not run</span>
+                      ) : (
+                        <span className={`pill ${r.tests_passed ? 'pill-good' : 'pill-critical'}`} title={r.exec_error ?? ''}>
+                          {r.tests_passed ? 'passed' : 'failed'}
+                        </span>
+                      )}
+                    </td>
+                  ) : (
+                    <>
+                      <td>{fmtScore(r.rougeL)}</td>
+                      <td>{fmtPct(r.entailment_rate)}</td>
+                      <td>
+                        {r.hallucination_flag === null ? (
+                          <span className="pill pill-neutral">n/a</span>
+                        ) : (
+                          <span className={`pill ${r.hallucination_flag ? 'pill-critical' : 'pill-good'}`}>
+                            {r.hallucination_flag ? 'flagged' : 'none'}
+                          </span>
+                        )}
+                      </td>
+                    </>
+                  )}
+                  <td>{fmtMs(r.latency_ms)}</td>
+                  <td style={{ maxWidth: 420, whiteSpace: 'pre-wrap' }}>
+                    {r.response_text}
+                    {r.exec_error && <div style={{ fontSize: 12, marginTop: 4 }}>⚠ {r.exec_error}</div>}
                   </td>
-                  <td>{r.latency_ms.toFixed(0)}</td>
-                  <td style={{ maxWidth: 360 }}>{r.response_text}</td>
                 </tr>
               ))}
             </tbody>
@@ -151,7 +151,7 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {!runId && !loading && <div className="empty-state">Pick a run above to see its results.</div>}
+      {!runId && <div className="empty-state">Pick a run above to see its results.</div>}
     </div>
   );
 }
