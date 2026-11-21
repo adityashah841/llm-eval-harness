@@ -69,6 +69,17 @@ def main(dataset, models, smoke_test, parallel, output, summary_json, no_mlflow)
         click.echo("\nAggregate scores (None = metric does not apply to this dataset):")
         click.echo(pd.DataFrame(summary).T.to_string())
 
+    failed_tests = [r for r in outcome.results if r.tests_passed is False]
+    if failed_tests:
+        click.echo("\nFailed unit tests:")
+        for r in failed_tests:
+            click.echo(f"  {r.model_name} / {r.sample_id}: {r.exec_error}")
+    contradicted = [r for r in outcome.results if r.hallucination_flag]
+    if contradicted:
+        click.echo("\nResponses with a sentence contradicted by the premise:")
+        for r in contradicted:
+            click.echo(f"  {r.model_name} / {r.sample_id}")
+
     if summary_json:
         Path(summary_json).parent.mkdir(parents=True, exist_ok=True)
         Path(summary_json).write_text(json.dumps({
