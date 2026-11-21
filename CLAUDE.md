@@ -2,9 +2,10 @@
 
 ## Project Overview
 
-This is a fully local LLM evaluation framework. It compares open-source models served
-by Ollama using ROUGE scores, NLI-based hallucination detection, and latency metrics.
-No API keys, no paid services — everything runs on the developer's machine.
+A fully local LLM evaluation framework. It compares open-source models served by
+Ollama on accuracy (ROUGE for text, unit tests for code), grounding (sentence-level
+NLI) and latency. No API keys, no paid services. README.md is the user-facing
+source of truth for how scoring works.
 
 ## Repository
 
@@ -14,122 +15,82 @@ Do not give claude the co-ownership. Let it be completely owned by adityashah841
 
 ## Tech Stack
 
-- **Python 3.11** (managed by uv)
-- **uv** for dependency management (`uv sync`, `uv run`)
-- **Ollama** for local model serving (must be running at http://localhost:11434)
-- **httpx** for async HTTP calls to Ollama API (timeout: 600s)
-- **HuggingFace evaluate + rouge-score** for ROUGE metrics
-- **transformers** (cross-encoder/nli-deberta-v3-small) for hallucination detection
-- **MLflow** for experiment tracking
-- **Streamlit** for the dashboard UI
-- **Click** for CLI entry points
+- **Python 3.11** (managed by uv: `uv sync`, `uv run`)
+- **Ollama** for model serving (default http://localhost:11434, `OLLAMA_BASE_URL` to change)
+- **httpx** async calls to Ollama (`OLLAMA_TIMEOUT_S`, default 600 s)
+- **rouge-score** for ROUGE-1/2/L (no runtime download)
+- **transformers** + `cross-encoder/nli-deberta-v3-small` for sentence-level NLI (CPU)
+- **MLflow** experiment tracking (default store: `mlflow.db` in the working directory)
+- **FastAPI** API, **SQLite** run history (`data/metrics.db`, not committed)
+- **Streamlit** dashboard, **React + Vite + TypeScript** frontend
+- **Click** CLI, **pytest** tests
 
-## Models Available (all pulled and ready)
+## Evaluation methodology (EVAL_VERSION = 2)
 
-- `llama3.1:70b` — ~42 GB on disk, best quality, very slow on CPU (~20+ min/sample)
-- `deepseek-r1:14b` — ~9 GB, reasoning with chain-of-thought
-- `phi4` — ~9 GB, strong reasoning, ~6-8 min/sample on CPU
-- `gemma3:4b` — ~3.3 GB, fast baseline, ~2.5 min/sample on CPU ← start here
+Defined in `llm_eval/runner/prompt_runner.py`. Bump `EVAL_VERSION` (and document it in
+the README's "Methodology changes") whenever a scoring change makes new scores
+incomparable with old ones; trend charts and drift checks only compare runs with the
+same version.
+
+- Dataset YAML may set `system_prompt` (file level), and per sample `context` (NLI
+  premise, e.g. the passage being summarized) and `tests` (asserts → scored by
+  execution, not ROUGE/NLI).
+- Decoding is greedy: `temperature 0`, `seed 42`, `num_predict 1024`.
+- `<think>…</think>` is stripped from responses before scoring.
+- Models are queried sequentially by default; `--parallel` / `"parallel": true` overlaps them.
+- Failed model calls are recorded in `RunOutcome.failures`; run status is
+  completed / partial / failed.
 
 ## Project Structure
 
 ```
 llm_eval/
-├── adapters/
-│   ├── base.py              # BaseAdapter ABC + ModelResponse dataclass
-│   ├── ollama_adapter.py    # OllamaAdapter (async httpx, 600s timeout)
-│   └── __init__.py
-├── evaluators/
-│   ├── rouge_evaluator.py   # ROUGE-1/2/L via HuggingFace evaluate
-│   ├── hallucination_evaluator.py  # NLI via DeBERTa-v3-small (CPU)
-│   └── __init__.py
-├── runner/
-│   ├── dataset_loader.py    # Loads YAML datasets into EvalSample dataclasses
-│   ├── prompt_runner.py     # Async runner + EvalResult + MLflow logging
-│   └── __init__.py
-└── dashboard/
-    ├── app.py               # Streamlit dashboard (port 8501)
-    └── __init__.py
-datasets/
-├── legal_qa/legal_qa.yaml         # 5 legal QA pairs
-├── code_gen/code_gen.yaml         # 4 coding tasks
-└── summarization/summarization.yaml  # 4 summarization tasks
-scripts/
-├── run_eval.py              # Click CLI entry point
-└── generate_tests.py        # Generates adversarial tests via local llama3.1:70b
-.github/workflows/eval.yml   # GitHub Actions smoke test (gemma3:4b, 2 samples)
-Dockerfile                   # Containerized dashboard
-docker-compose.yml           # Dashboard + MLflow services
+├── adapters/      base.py (BaseAdapter, ModelResponse), ollama_adapter.py
+├── evaluators/    rouge_evaluator.py, hallucination_evaluator.py (sentence NLI),
+│                  code_execution_evaluator.py (unit tests in a subprocess)
+├── runner/        dataset_loader.py, prompt_runner.py (EvalResult, RunOutcome, EVAL_VERSION),
+│                  summary.py (shared aggregation/percentiles)
+└── dashboard/app.py   Streamlit (port 8501)
+api/               FastAPI: main.py, config.py (env vars), routes/, schemas.py, store.py,
+                   db.py (SQLite + schema migration via PRAGMA user_version)
+frontend/          React app (pages/, components/, hooks/, lib/stats.ts mirrors summary.py)
+datasets/          legal_qa (5), summarization (4, with context), code_gen (4, with tests)
+scripts/           run_eval.py (CLI), generate_tests.py, scheduled_benchmark.py
+tests/             offline suite (stubs Ollama + NLI) and requires_models tests
+.github/workflows/ eval.yml (CI), scheduled-benchmark.yml (daily → benchmark-data branch)
 ```
 
 ## Key Commands
 
 ```bash
-# Start Ollama (if not already running)
-"C:\Users\adity\AppData\Local\Programs\Ollama\ollama.exe" serve &
-
-# Install dependencies
-uv sync
-
-# Launch Streamlit dashboard
+uv sync                                   # install
+ollama serve                              # if Ollama isn't already running
+uv run pytest                             # offline tests
+uv run pytest -m requires_models          # real NLI model tests (needs Hugging Face access)
+uv run python scripts/run_eval.py -d datasets/legal_qa -m gemma3:4b --smoke-test --no-mlflow
 uv run streamlit run llm_eval/dashboard/app.py
-# → opens at http://localhost:8501
-
-# CLI benchmark
-uv run python scripts/run_eval.py --dataset datasets/code_gen --models gemma3:4b
-
-# Smoke test (2 samples, no MLflow)
-uv run python scripts/run_eval.py --dataset datasets/legal_qa --models gemma3:4b --smoke-test --no-mlflow --output outputs/smoke_test.csv
-
-# View MLflow experiment history
-uv run mlflow ui
-# → opens at http://localhost:5000
-
-# Generate more test cases with local model
-python scripts/generate_tests.py --domain legal_qa --count 20
+uv run uvicorn api.main:app --reload --port 8000
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+cd frontend && npm install && npm run dev  # also: npm run lint, npm run build
 ```
 
-## Ollama Setup
+On Windows, Ollama is installed at `C:\Users\adity\AppData\Local\Programs\Ollama\ollama.exe`
+and does not auto-start. The uv venv is activated with `.venv\Scripts\Activate.ps1`.
 
-- Installed at: `C:\Users\adity\AppData\Local\Programs\Ollama\ollama.exe`
-- Does NOT auto-start — must run `ollama serve` manually each session
-- All 4 models are already pulled and ready
+## Data and history
 
-## Current Status (fully working)
+- `data/`, `outputs/`, `mlruns/`, `mlflow.db` and `*.csv` are gitignored.
+- The daily benchmark's history is on the `benchmark-data` branch (`metrics.db`). Load it with
+  `git fetch origin benchmark-data && git show origin/benchmark-data:metrics.db > data/metrics.db`.
+- `api/db.py` migrates older databases in place; pre-v2 runs are tagged `eval_version` 1.
 
-- [x] All code written and pushed to GitHub
-- [x] All 4 Ollama models pulled (gemma3:4b, phi4, deepseek-r1:14b, llama3.1:70b)
-- [x] Smoke test passed (gemma3:4b, 2 legal QA samples, ROUGE + hallucination scores)
-- [x] Dashboard confirmed working (gemma3:4b on code_gen dataset)
-- [x] All fixes pushed to GitHub (2 commits on main)
+## Known caveats
 
-## Known Issues & Fixes Applied
-
-### Timeout on large models (phi4, deepseek-r1, llama3.1)
-- **Problem:** httpx default 180s timeout was too short for CPU inference
-- **Fix:** Raised to 600s in `llm_eval/adapters/ollama_adapter.py`
-- **Note:** phi4 takes ~6-8 min/sample on CPU; llama3.1:70b takes 20+ min/sample
-
-### KeyError: 'model_name' in dashboard
-- **Problem:** If all model calls time out, results list is empty → DataFrame has no columns → groupby crashes
-- **Fix:** Added empty DataFrame guard in `llm_eval/dashboard/app.py` before the groupby
-
-## Performance Expectations (CPU, no GPU)
-
-| Model | Time/sample | 4-sample dataset |
-|---|---|---|
-| gemma3:4b | ~2.5 min | ~10 min |
-| phi4 | ~6-8 min | ~25-32 min |
-| deepseek-r1:14b | ~6-8 min | ~25-32 min |
-| llama3.1:70b | ~20+ min | ~80+ min |
-
-Running 2 models in parallel: time = slowest model × num_samples (not sum of both).
-
-## Important Notes
-
-- The `.venv/` is managed by uv — activate with `.venv\Scripts\Activate.ps1` (PowerShell)
-- `outputs/` and `*.csv` are gitignored — results stay local
-- `mlruns/` is gitignored — MLflow data stays local
-- The NLI model (DeBERTa-v3-small, ~85 MB) is cached after first download from HuggingFace
-- The symlink warning on Windows and DeBERTa `UNEXPECTED key` warning are both harmless
-- Docker's `extra_hosts: host.docker.internal:host-gateway` lets the container reach host Ollama
+- ROUGE is lexical. It's only meaningful because the datasets ask for short answers.
+- NLI flags contradictions with the premise. It can't catch false claims the premise
+  doesn't mention.
+- Generated code is executed with resource limits, but that is not a security sandbox
+  (`LLM_EVAL_DISABLE_CODE_EXEC=1` turns it off).
+- Latency on GitHub-hosted runners varies by machine; treat CI latency as indicative.
+- The DeBERTa `UNEXPECTED key` load warning and the Windows symlink warning from
+  huggingface_hub are harmless.
