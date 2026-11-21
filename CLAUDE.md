@@ -35,7 +35,8 @@ same version.
 - Dataset YAML may set `system_prompt` (file level), and per sample `context` (NLI
   premise, e.g. the passage being summarized) and `tests` (asserts → scored by
   execution, not ROUGE/NLI).
-- Decoding is greedy: `temperature 0`, `seed 42`, `num_predict 1024`.
+- Decoding is greedy: `temperature 0`, `seed 42`, `num_predict 1024`. Scores still vary
+  slightly across machines (CPU floating point), so don't describe runs as fully deterministic.
 - `<think>…</think>` is stripped from responses before scoring.
 - Models are queried sequentially by default; `--parallel` / `"parallel": true` overlaps them.
 - Failed model calls are recorded in `RunOutcome.failures`; run status is

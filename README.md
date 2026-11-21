@@ -70,8 +70,10 @@ own tests in `tests/test_datasets.py`.
 
 **Reproducibility.** Requests use greedy decoding (`temperature: 0`, `seed: 42`,
 `num_predict: 1024`), and each result records the model's Ollama digest, so a score
-change can be traced to a model change. Outputs can still differ across Ollama
-versions or hardware.
+change can be traced to a model change. Greedy decoding removes sampling randomness,
+but outputs can still differ slightly between machines, because CPU floating-point
+arithmetic varies. Two CI runs of the same commit on different GitHub runners gave
+legal-QA ROUGE-L 0.446 and 0.457 (see [Reference results](#reference-results)).
 
 **Latency.** `latency_ms` is the wall-clock time of the request, including model loading
 on a cold start (recorded separately as `load_ms`). `generation_ms` is Ollama's own
@@ -87,6 +89,28 @@ pulled, timeout) is saved with its error. A run is `completed` (all calls scored
 **Scale.** 13 samples is a smoke-scale benchmark: good for regressions and comparing
 setups, too small for fine-grained model rankings. Add samples with your own YAML or
 `scripts/generate_tests.py`.
+
+## Reference results
+
+gemma3:4b on every dataset, from CI's `model-eval` job (GitHub `ubuntu-latest`, CPU
+only, Ollama 0.40.17), for two runs of the same commit on different runners:
+
+| Dataset | Metric | [Run 1](https://github.com/adityashah841/llm-eval-harness/actions/runs/44958882080) | [Run 2](https://github.com/adityashah841/llm-eval-harness/actions/runs/44959347404) |
+|---|---|---|---|
+| legal_qa (5) | ROUGE-L | 0.446 | 0.457 |
+| | Supported sentences | 40% | 60% |
+| | Responses with a contradiction | 0% | 0% |
+| summarization (4) | ROUGE-L | 0.406 | 0.408 |
+| | Supported sentences | 75% | 75% |
+| | Responses with a contradiction | 0% | 0% |
+| code_gen (4) | Unit-test pass rate | 50% | 50% |
+| all | Latency p50 per request | 4.5–12.2 s | 3.7–9.6 s |
+
+Both code failures are real model mistakes: for `cg_003` the model wrote a decorator
+that takes arguments when the prompt said `@retry` takes none, and for `cg_004` its
+`timer()` yields `None` instead of an object. With 4–5 samples per dataset, one sample
+moves a rate by 20–25 points. To reproduce, run the CI workflow
+(`workflow_dispatch`) or the CLI commands below.
 
 ## Quick start
 
@@ -248,8 +272,9 @@ mkdir -p data && git show origin/benchmark-data:metrics.db > data/metrics.db
 uv run python scripts/scheduled_benchmark.py
 ```
 
-Scores are deterministic for a given model digest and Ollama version, so a score change
-means something changed. Latency on GitHub's shared runners varies from machine to
+With greedy decoding, day-to-day score changes are small unless the model, Ollama or
+the harness changed. Some machine-to-machine wobble remains (see above), which the
+15% drift tolerance absorbs. Latency on GitHub's shared runners varies from machine to
 machine, so treat the benchmark's latency trend as indicative only.
 
 ## Observability dashboard
@@ -260,7 +285,7 @@ The frontend's **System health** page (`/health`) shows one *methodology version
 - **Accuracy trend and drift flag**: ROUGE-L (text) or unit-test pass rate (code) per
   run. A `drift detected` banner appears if the latest run falls more than 15% below the
   mean of the previous 5 runs. The banner also says when the model digest changed within
-  that window, which usually explains the drift.
+  that window, the first thing to check when drift appears.
 - **Grounding trend**: share of responses with a contradicted sentence, and share of
   supported sentences.
 - **Latency percentiles**: p50 and p95 per run.
@@ -317,7 +342,7 @@ which makes it several GB.
 
 ```
 llm_eval/
-├── adapters/        # BaseAdapter + OllamaAdapter (deterministic options, digests, think-stripping)
+├── adapters/        # BaseAdapter + OllamaAdapter (greedy decoding, digests, think-stripping)
 ├── evaluators/      # ROUGE, sentence-level NLI grounding, unit-test execution
 ├── runner/          # Dataset loader, PromptRunner (EvalResult/RunOutcome), shared aggregation
 └── dashboard/       # Streamlit app

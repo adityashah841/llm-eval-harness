@@ -4,10 +4,11 @@ Re-runs a fixed benchmark and persists the results to the metrics DB.
 
 Invoked daily by .github/workflows/scheduled-benchmark.yml so
 GET /metrics/timeseries has a real time series to serve. Every dataset is run
-in full with one fixed model and greedy decoding, so day-to-day differences in
-scores point at a change in the model, Ollama or the harness rather than
-sampling noise. (Latency on shared CI runners varies with the machine, so
-treat latency trends from this job as indicative only.)
+in full with one fixed model and greedy decoding, so there is no sampling
+noise; large day-to-day changes point at the model, Ollama or the harness.
+Small differences can still come from running on different CPUs. (Latency on
+shared CI runners varies with the machine, so treat latency trends from this
+job as indicative only.)
 
 Exits non-zero if any run failed or was partial, so the workflow shows red.
 """
